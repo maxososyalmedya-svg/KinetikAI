@@ -18,24 +18,17 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK Licenses
-        run: |
-          yes | sdkmanager --licenses || true
+      - name: Install Official Gradle 8.2
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.2'
 
-      - name: Generate Clean Project Code
+      - name: Generate Android Code
         run: |
           mkdir -p app/src/main/java/com/kinetik/ai
           mkdir -p app/src/main/res/layout
           mkdir -p app/src/main/res/drawable
-          mkdir -p app/src/main/res/values
 
-          # gradle.properties
-          cat << 'EOF' > gradle.properties
-          android.useAndroidX=true
-          org.gradle.jvmargs=-Xmx2048m
-          EOF
-
-          # settings.gradle
           cat << 'EOF' > settings.gradle
           pluginManagement {
               repositories {
@@ -55,14 +48,17 @@ jobs:
           include ':app'
           EOF
 
-          # root build.gradle
+          cat << 'EOF' > gradle.properties
+          android.useAndroidX=true
+          org.gradle.jvmargs=-Xmx2048m
+          EOF
+
           cat << 'EOF' > build.gradle
           plugins {
-              id 'com.android.application' version '8.1.4' apply false
+              id 'com.android.application' version '8.2.2' apply false
           }
           EOF
 
-          # app/build.gradle
           cat << 'EOF' > app/build.gradle
           plugins {
               id 'com.android.application'
@@ -96,7 +92,6 @@ jobs:
           }
           EOF
 
-          # AndroidManifest.xml
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -108,7 +103,6 @@ jobs:
                   android:icon="@android:drawable/sym_def_app_icon"
                   android:label="Kinetik AI"
                   android:theme="@style/Theme.AppCompat.NoActionBar">
-
                   <activity
                       android:name=".MainActivity"
                       android:exported="true">
@@ -117,7 +111,6 @@ jobs:
                           <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
                   </activity>
-
                   <service
                       android:name=".OverlayService"
                       android:exported="false" />
@@ -125,7 +118,6 @@ jobs:
           </manifest>
           EOF
 
-          # Bubble background (Neon Amber Gradient)
           cat << 'EOF' > app/src/main/res/drawable/bubble_bg.xml
           <?xml version="1.0" encoding="utf-8"?>
           <shape xmlns:android="http://schemas.android.com/apk/res/android"
@@ -141,7 +133,6 @@ jobs:
           </shape>
           EOF
 
-          # MainActivity layout
           cat << 'EOF' > app/src/main/res/layout/activity_main.xml
           <?xml version="1.0" encoding="utf-8"?>
           <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -180,7 +171,6 @@ jobs:
           </LinearLayout>
           EOF
 
-          # MainActivity.java
           cat << 'EOF' > app/src/main/java/com/kinetik/ai/MainActivity.java
           package com.kinetik.ai;
 
@@ -223,7 +213,6 @@ jobs:
           }
           EOF
 
-          # OverlayService.java (Floating Draggable Bubble)
           cat << 'EOF' > app/src/main/java/com/kinetik/ai/OverlayService.java
           package com.kinetik.ai;
 
@@ -305,7 +294,7 @@ jobs:
                                   float diffX = Math.abs(event.getRawX() - initialTouchX);
                                   float diffY = Math.abs(event.getRawY() - initialTouchY);
                                   if (diffX < 15 && diffY < 15) {
-                                      Toast.makeText(OverlayService.this, "Kinetik AI: Hazırım! CapCut'ı açabilirsin 🔥", Toast.LENGTH_SHORT).show() ;
+                                      Toast.makeText(OverlayService.this, "Kinetik AI: Hazırım! CapCut'ı açabilirsin 🔥", Toast.LENGTH_SHORT).show();
                                   }
                                   return true;
                           }
@@ -326,12 +315,10 @@ jobs:
           }
           EOF
 
-      - name: Build APK with Gradle
-        run: |
-          gradle wrapper --gradle-version 8.2
-          ./gradlew assembleDebug --no-daemon --stacktrace
+      - name: Build APK with Clean Gradle 8.2
+        run: gradle assembleDebug --no-daemon
 
-      - name: Upload Kinetik AI APK Artifact
+      - name: Upload Kinetik AI APK
         uses: actions/upload-artifact@v4
         with:
           name: KinetikAI-Poco-Build
