@@ -1,0 +1,335 @@
+name: Build Kinetik AI APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Generate Android Project Code
+        run: |
+          mkdir -p app/src/main/java/com/kinetik/ai
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/drawable
+          mkdir -p app/src/main/res/values
+
+          # settings.gradle
+          cat << 'EOF' > settings.gradle
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "KinetikAI"
+          include ':app'
+          EOF
+
+          # root build.gradle
+          cat << 'EOF' > build.gradle
+          plugins {
+              id 'com.android.application' version '8.2.2' apply false
+              id 'org.jetbrains.kotlin.android' version '1.9.22' apply false
+          }
+          EOF
+
+          # app/build.gradle
+          cat << 'EOF' > app/build.gradle
+          plugins {
+              id 'com.android.application'
+              id 'org.jetbrains.kotlin.android'
+          }
+
+          android {
+              namespace 'com.kinetik.ai'
+              compileSdk 34
+
+              defaultConfig {
+                  applicationId "com.kinetik.ai"
+                  minSdk 26
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                  }
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = '17'
+              }
+          }
+
+          dependencies {
+              implementation 'androidx.core:core-ktx:1.12.0'
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+              implementation 'com.google.android.material:material:1.11.0'
+          }
+          EOF
+
+          # AndroidManifest.xml
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+              
+              <application
+                  android:allowBackup="true"
+                  android:icon="@android:drawable/sym_def_app_icon"
+                  android:label="Kinetik AI"
+                  android:theme="@style/Theme.AppCompat.NoActionBar">
+                  
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+                  
+                  <service
+                      android:name=".OverlayService"
+                      android:exported="false" />
+              </application>
+          </manifest>
+          EOF
+
+          # colors & strings
+          cat << 'EOF' > app/src/main/res/values/colors.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <color name="black">#121212</color>
+              <color name="amber">#FF8C00</color>
+              <color name="white">#FFFFFF</color>
+          </resources>
+          EOF
+
+          # Floating bubble background drawable (Neon Amber Circle)
+          cat << 'EOF' > app/src/main/res/drawable/bubble_bg.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <shape xmlns:android="http://schemas.android.com/apk/res/android"
+              android:shape="oval">
+              <gradient
+                  android:startColor="#FFA500"
+                  android:endColor="#FF4500"
+                  android:type="linear"
+                  android:angle="45" />
+              <stroke
+                  android:width="3dp"
+                  android:color="#FFFFFF" />
+          </shape>
+          EOF
+
+          # MainActivity Layout
+          cat << 'EOF' > app/src/main/res/layout/activity_main.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:orientation="vertical"
+              android:gravity="center"
+              android:background="#121212"
+              android:padding="24dp">
+
+              <TextView
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="KINETIK AI"
+                  android:textColor="#FF8C00"
+                  android:textSize="32sp"
+                  android:textStyle="bold" />
+
+              <TextView
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:layout_marginTop="8dp"
+                  android:text="Mobil Video Edit Asistanı"
+                  android:textColor="#AAAAAA"
+                  android:textSize="16sp" />
+
+              <Button
+                  android:id="@+id/btnStartOverlay"
+                  android:layout_width="match_parent"
+                  android:layout_height="60dp"
+                  android:layout_marginTop="48dp"
+                  android:backgroundTint="#FF8C00"
+                  android:text="Baloncuğu Başlat (Start)"
+                  android:textColor="#FFFFFF"
+                  android:textSize="18sp" />
+          </LinearLayout>
+          EOF
+
+          # MainActivity.kt
+          cat << 'EOF' > app/src/main/java/com/kinetik/ai/MainActivity.kt
+          package com.kinetik.ai
+
+          import android.content.Intent
+          import android.net.Uri
+          import android.os.Build
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.widget.Button
+          import android.widget.Toast
+          import androidx.appcompat.app.AppCompatActivity
+
+          class MainActivity : AppCompatActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContentView(R.layout.activity_main)
+
+                  val btnStart = findViewById<Button>(R.id.btnStartOverlay)
+                  btnStart.setOnClickListener {
+                      if (!Settings.canDrawOverlays(this)) {
+                          Toast.makeText(this, "Lütfen 'Diğer uygulamaların üzerinde göster' iznini açın", Toast.LENGTH_LONG).show()
+                          val intent = Intent(
+                              Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                              Uri.parse("package:$packageName")
+                          )
+                          startActivityForResult(intent, 123)
+                      } else {
+                          startOverlay()
+                      }
+                  }
+              }
+
+              private fun startOverlay() {
+                  startService(Intent(this, OverlayService::class.java))
+                  finish()
+              }
+          }
+          EOF
+
+          # OverlayService.kt (The Floating Glowing Bubble)
+          cat << 'EOF' > app/src/main/java/com/kinetik/ai/OverlayService.kt
+          package com.kinetik.ai
+
+          import android.app.Service
+          import android.content.Intent
+          import android.graphics.Color
+          import android.graphics.PixelFormat
+          import android.os.Build
+          import android.os.IBinder
+          import android.view.Gravity
+          import android.view.MotionEvent
+          import android.view.View
+          import android.view.WindowManager
+          import android.widget.TextView
+          import android.widget.Toast
+          import androidx.core.content.ContextCompat
+
+          class OverlayService : Service() {
+              private var windowManager: WindowManager? = null
+              private var floatingView: TextView? = null
+
+              override fun onBind(intent: Intent?): IBinder? = null
+
+              override fun onCreate() {
+                  super.onCreate()
+
+                  windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+
+                  floatingView = TextView(this).apply {
+                      text = "K"
+                      textSize = 28f
+                      setTextColor(Color.WHITE)
+                      gravity = Gravity.CENTER
+                      background = ContextCompat.getDrawable(this@OverlayService, R.drawable.bubble_bg)
+                  }
+
+                  val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                  } else {
+                      WindowManager.LayoutParams.TYPE_PHONE
+                  }
+
+                  val params = WindowManager.LayoutParams(
+                      170, 170,
+                      layoutType,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                      PixelFormat.TRANSLUCENT
+                  ).apply {
+                      gravity = Gravity.TOP or Gravity.START
+                      x = 100
+                      y = 300
+                  }
+
+                  var initialX = 0
+                  var initialY = 0
+                  var initialTouchX = 0f
+                  var initialTouchY = 0f
+
+                  floatingView?.setOnTouchListener { v, event ->
+                      when (event.action) {
+                          MotionEvent.ACTION_DOWN -> {
+                              initialX = params.x
+                              initialY = params.y
+                              initialTouchX = event.rawX
+                              initialTouchY = event.rawY
+                              true
+                          }
+                          MotionEvent.ACTION_MOVE -> {
+                              params.x = initialX + (event.rawX - initialTouchX).toInt()
+                              params.y = initialY + (event.rawY - initialTouchY).toInt()
+                              windowManager?.updateViewLayout(floatingView, params)
+                              true
+                          }
+                          MotionEvent.ACTION_UP -> {
+                              val diffX = Math.abs(event.rawX - initialTouchX)
+                              val diffY = Math.abs(event.rawY - initialTouchY)
+                              if (diffX < 10 && diffY < 10) {
+                                  Toast.makeText(this, "Kinetik AI: Hazırım! CapCut'ı açabilirsin 🔥", Toast.LENGTH_SHORT).show()
+                              }
+                              true
+                          }
+                          else -> false
+                      }
+                  }
+
+                  windowManager?.addView(floatingView, params)
+              }
+
+              override fun onDestroy() {
+                  super.onDestroy()
+                  if (floatingView != null) windowManager?.removeView(floatingView)
+              }
+          }
+          EOF
+
+      - name: Build APK with Gradle
+        run: |
+          gradle wrapper --gradle-version 8.2
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload Kinetik AI APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KinetikAI-Poco-Build
+          path: app/build/outputs/apk/debug/app-debug.apk
