@@ -18,12 +18,22 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Generate Android Project Code
+      - name: Setup Android SDK Licenses
+        run: |
+          yes | sdkmanager --licenses || true
+
+      - name: Generate Clean Project Code
         run: |
           mkdir -p app/src/main/java/com/kinetik/ai
           mkdir -p app/src/main/res/layout
           mkdir -p app/src/main/res/drawable
           mkdir -p app/src/main/res/values
+
+          # gradle.properties
+          cat << 'EOF' > gradle.properties
+          android.useAndroidX=true
+          org.gradle.jvmargs=-Xmx2048m
+          EOF
 
           # settings.gradle
           cat << 'EOF' > settings.gradle
@@ -48,8 +58,7 @@ jobs:
           # root build.gradle
           cat << 'EOF' > build.gradle
           plugins {
-              id 'com.android.application' version '8.2.2' apply false
-              id 'org.jetbrains.kotlin.android' version '1.9.22' apply false
+              id 'com.android.application' version '8.1.4' apply false
           }
           EOF
 
@@ -57,7 +66,6 @@ jobs:
           cat << 'EOF' > app/build.gradle
           plugins {
               id 'com.android.application'
-              id 'org.jetbrains.kotlin.android'
           }
 
           android {
@@ -81,15 +89,10 @@ jobs:
                   sourceCompatibility JavaVersion.VERSION_17
                   targetCompatibility JavaVersion.VERSION_17
               }
-              kotlinOptions {
-                  jvmTarget = '17'
-              }
           }
 
           dependencies {
-              implementation 'androidx.core:core-ktx:1.12.0'
               implementation 'androidx.appcompat:appcompat:1.6.1'
-              implementation 'com.google.android.material:material:1.11.0'
           }
           EOF
 
@@ -99,13 +102,13 @@ jobs:
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-              
+
               <application
                   android:allowBackup="true"
                   android:icon="@android:drawable/sym_def_app_icon"
                   android:label="Kinetik AI"
                   android:theme="@style/Theme.AppCompat.NoActionBar">
-                  
+
                   <activity
                       android:name=".MainActivity"
                       android:exported="true">
@@ -114,7 +117,7 @@ jobs:
                           <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
                   </activity>
-                  
+
                   <service
                       android:name=".OverlayService"
                       android:exported="false" />
@@ -122,17 +125,7 @@ jobs:
           </manifest>
           EOF
 
-          # colors & strings
-          cat << 'EOF' > app/src/main/res/values/colors.xml
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <color name="black">#121212</color>
-              <color name="amber">#FF8C00</color>
-              <color name="white">#FFFFFF</color>
-          </resources>
-          EOF
-
-          # Floating bubble background drawable (Neon Amber Circle)
+          # Bubble background (Neon Amber Gradient)
           cat << 'EOF' > app/src/main/res/drawable/bubble_bg.xml
           <?xml version="1.0" encoding="utf-8"?>
           <shape xmlns:android="http://schemas.android.com/apk/res/android"
@@ -148,7 +141,7 @@ jobs:
           </shape>
           EOF
 
-          # MainActivity Layout
+          # MainActivity layout
           cat << 'EOF' > app/src/main/res/layout/activity_main.xml
           <?xml version="1.0" encoding="utf-8"?>
           <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -187,138 +180,148 @@ jobs:
           </LinearLayout>
           EOF
 
-          # MainActivity.kt
-          cat << 'EOF' > app/src/main/java/com/kinetik/ai/MainActivity.kt
-          package com.kinetik.ai
+          # MainActivity.java
+          cat << 'EOF' > app/src/main/java/com/kinetik/ai/MainActivity.java
+          package com.kinetik.ai;
 
-          import android.content.Intent
-          import android.net.Uri
-          import android.os.Build
-          import android.os.Bundle
-          import android.provider.Settings
-          import android.widget.Button
-          import android.widget.Toast
-          import androidx.appcompat.app.AppCompatActivity
+          import android.content.Intent;
+          import android.net.Uri;
+          import android.os.Build;
+          import android.os.Bundle;
+          import android.provider.Settings;
+          import android.view.View;
+          import android.widget.Button;
+          import android.widget.Toast;
+          import androidx.appcompat.app.AppCompatActivity;
 
-          class MainActivity : AppCompatActivity() {
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  super.onCreate(savedInstanceState)
-                  setContentView(R.layout.activity_main)
+          public class MainActivity extends AppCompatActivity {
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  setContentView(R.layout.activity_main);
 
-                  val btnStart = findViewById<Button>(R.id.btnStartOverlay)
-                  btnStart.setOnClickListener {
-                      if (!Settings.canDrawOverlays(this)) {
-                          Toast.makeText(this, "Lütfen 'Diğer uygulamaların üzerinde göster' iznini açın", Toast.LENGTH_LONG).show()
-                          val intent = Intent(
-                              Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                              Uri.parse("package:$packageName")
-                          )
-                          startActivityForResult(intent, 123)
-                      } else {
-                          startOverlay()
+                  Button btnStart = findViewById(R.id.btnStartOverlay);
+                  btnStart.setOnClickListener(new View.OnClickListener() {
+                      @Override
+                      public void onClick(View v) {
+                          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(MainActivity.this)) {
+                              Toast.makeText(MainActivity.this, "Lütfen 'Diğer uygulamaların üzerinde göster' iznini açın", Toast.LENGTH_LONG).show();
+                              Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                      Uri.parse("package:" + getPackageName()));
+                              startActivityForResult(intent, 123);
+                          } else {
+                              startOverlay();
+                          }
                       }
-                  }
+                  });
               }
 
-              private fun startOverlay() {
-                  startService(Intent(this, OverlayService::class.java))
-                  finish()
+              private void startOverlay() {
+                  startService(new Intent(this, OverlayService.class));
+                  finish();
               }
           }
           EOF
 
-          # OverlayService.kt (The Floating Glowing Bubble)
-          cat << 'EOF' > app/src/main/java/com/kinetik/ai/OverlayService.kt
-          package com.kinetik.ai
+          # OverlayService.java (Floating Draggable Bubble)
+          cat << 'EOF' > app/src/main/java/com/kinetik/ai/OverlayService.java
+          package com.kinetik.ai;
 
-          import android.app.Service
-          import android.content.Intent
-          import android.graphics.Color
-          import android.graphics.PixelFormat
-          import android.os.Build
-          import android.os.IBinder
-          import android.view.Gravity
-          import android.view.MotionEvent
-          import android.view.View
-          import android.view.WindowManager
-          import android.widget.TextView
-          import android.widget.Toast
-          import androidx.core.content.ContextCompat
+          import android.app.Service;
+          import android.content.Intent;
+          import android.graphics.Color;
+          import android.graphics.PixelFormat;
+          import android.os.Build;
+          import android.os.IBinder;
+          import android.view.Gravity;
+          import android.view.MotionEvent;
+          import android.view.View;
+          import android.view.WindowManager;
+          import android.widget.TextView;
+          import android.widget.Toast;
+          import androidx.core.content.ContextCompat;
 
-          class OverlayService : Service() {
-              private var windowManager: WindowManager? = null
-              private var floatingView: TextView? = null
+          public class OverlayService extends Service {
+              private WindowManager windowManager;
+              private TextView floatingView;
 
-              override fun onBind(intent: Intent?): IBinder? = null
-
-              override fun onCreate() {
-                  super.onCreate()
-
-                  windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-
-                  floatingView = TextView(this).apply {
-                      text = "K"
-                      textSize = 28f
-                      setTextColor(Color.WHITE)
-                      gravity = Gravity.CENTER
-                      background = ContextCompat.getDrawable(this@OverlayService, R.drawable.bubble_bg)
-                  }
-
-                  val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                  } else {
-                      WindowManager.LayoutParams.TYPE_PHONE
-                  }
-
-                  val params = WindowManager.LayoutParams(
-                      170, 170,
-                      layoutType,
-                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                      PixelFormat.TRANSLUCENT
-                  ).apply {
-                      gravity = Gravity.TOP or Gravity.START
-                      x = 100
-                      y = 300
-                  }
-
-                  var initialX = 0
-                  var initialY = 0
-                  var initialTouchX = 0f
-                  var initialTouchY = 0f
-
-                  floatingView?.setOnTouchListener { v, event ->
-                      when (event.action) {
-                          MotionEvent.ACTION_DOWN -> {
-                              initialX = params.x
-                              initialY = params.y
-                              initialTouchX = event.rawX
-                              initialTouchY = event.rawY
-                              true
-                          }
-                          MotionEvent.ACTION_MOVE -> {
-                              params.x = initialX + (event.rawX - initialTouchX).toInt()
-                              params.y = initialY + (event.rawY - initialTouchY).toInt()
-                              windowManager?.updateViewLayout(floatingView, params)
-                              true
-                          }
-                          MotionEvent.ACTION_UP -> {
-                              val diffX = Math.abs(event.rawX - initialTouchX)
-                              val diffY = Math.abs(event.rawY - initialTouchY)
-                              if (diffX < 10 && diffY < 10) {
-                                  Toast.makeText(this, "Kinetik AI: Hazırım! CapCut'ı açabilirsin 🔥", Toast.LENGTH_SHORT).show()
-                              }
-                              true
-                          }
-                          else -> false
-                      }
-                  }
-
-                  windowManager?.addView(floatingView, params)
+              @Override
+              public IBinder onBind(Intent intent) {
+                  return null;
               }
 
-              override fun onDestroy() {
-                  super.onDestroy()
-                  if (floatingView != null) windowManager?.removeView(floatingView)
+              @Override
+              public void onCreate() {
+                  super.onCreate();
+
+                  windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+
+                  floatingView = new TextView(this);
+                  floatingView.setText("K");
+                  floatingView.setTextSize(28);
+                  floatingView.setTextColor(Color.WHITE);
+                  floatingView.setGravity(Gravity.CENTER);
+                  floatingView.setBackground(ContextCompat.getDrawable(this, R.drawable.bubble_bg));
+
+                  int layoutType;
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      layoutType = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
+                  } else {
+                      layoutType = WindowManager.LayoutParams.TYPE_PHONE;
+                  }
+
+                  final WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                          170, 170,
+                          layoutType,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                          PixelFormat.TRANSLUCENT
+                  );
+
+                  params.gravity = Gravity.TOP | Gravity.START;
+                  params.x = 100;
+                  params.y = 300;
+
+                  floatingView.setOnTouchListener(new View.OnTouchListener() {
+                      private int initialX;
+                      private int initialY;
+                      private float initialTouchX;
+                      private float initialTouchY;
+
+                      @Override
+                      public boolean onTouch(View v, MotionEvent event) {
+                          switch (event.getAction()) {
+                              case MotionEvent.ACTION_DOWN:
+                                  initialX = params.x;
+                                  initialY = params.y;
+                                  initialTouchX = event.getRawX();
+                                  initialTouchY = event.getRawY();
+                                  return true;
+                              case MotionEvent.ACTION_MOVE:
+                                  params.x = initialX + (int) (event.getRawX() - initialTouchX);
+                                  params.y = initialY + (int) (event.getRawY() - initialTouchY);
+                                  windowManager.updateViewLayout(floatingView, params);
+                                  return true;
+                              case MotionEvent.ACTION_UP:
+                                  float diffX = Math.abs(event.getRawX() - initialTouchX);
+                                  float diffY = Math.abs(event.getRawY() - initialTouchY);
+                                  if (diffX < 15 && diffY < 15) {
+                                      Toast.makeText(OverlayService.this, "Kinetik AI: Hazırım! CapCut'ı açabilirsin 🔥", Toast.LENGTH_SHORT).show() ;
+                                  }
+                                  return true;
+                          }
+                          return false;
+                      }
+                  });
+
+                  windowManager.addView(floatingView, params);
+              }
+
+              @Override
+              public void onDestroy() {
+                  super.onDestroy();
+                  if (floatingView != null) {
+                      windowManager.removeView(floatingView);
+                  }
               }
           }
           EOF
@@ -326,7 +329,7 @@ jobs:
       - name: Build APK with Gradle
         run: |
           gradle wrapper --gradle-version 8.2
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload Kinetik AI APK Artifact
         uses: actions/upload-artifact@v4
